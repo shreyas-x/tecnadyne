@@ -1,6 +1,7 @@
 import serial
 import time
 from gooey import Gooey, GooeyParser
+from utils.serial_port import SerialPort
 
 # LOOP_INTERVAL = 0.05 # seconds
 MIN_TO_SEC = 60
@@ -10,6 +11,8 @@ DLE = b'\x10' # Data Link Escape
 SOH = b'\x01' # Start Of Header
 STN = b'\x6F' # Addressing all thrusters
 ETX = b'\x03' # End of Text
+
+buffer = []
 
 # to convert input RPM to tach value
 def tachFromRPM(rpm, loopint):
@@ -59,25 +62,80 @@ def disableSpeedLoop():
 def sendMessageToThruster(ser, msg):
     ser.write(bytearray(msg))
 
+def rampThruster(ser, loopint, start, stop, step, ts, wait):
+    i = start
+    while(i <= stop):
+        i += step
+        sendMessageToThruster(ser, writeRPM(i, loopint))
+        sendMessageToThruster(ser, enableSpeedLoop())
+        time.sleep(ts)
+    x = stop
+    
+    keepAlive(ser, wait)
+
+    while(x >= start):
+        x -= step
+        sendMessageToThruster(ser, writeRPM(x, loopint))
+        sendMessageToThruster(ser, enableSpeedLoop())
+        time.sleep(ts)
+    sendMessageToThruster(ser, disableSpeedLoop())
+
+def askStatus():
+    CMD = b'\x37'
+    DBX = b'\x00'
+    msg = [DLE, SOH, STN, CMD, DBX, DBX, DBX, DBX, DLE, ETX]
+    BCC = checksum(msg)
+    msg = b''.join(msg) + BCC 
+    return msg
+
+def keepAlive(ser, tim):
+    print("waiting")
+    startTime = time.time()
+    while(time.time() - startTime < tim):
+        sendMessageToThruster(ser, askStatus())
+        # print("Received:", [hex(i) for i in received_message])
+        time.sleep(0.5)      
+    print("done waiting")
+
+
+# Function to receive data
+def receive_data(ser):
+    # received_data = ser.readline().decode().strip()
+    received_data = ser.read()
+    print ("rec", receive_data)
+    return received_data
+
+def datacb(arr):
+    print ("Data:", [hex(i) for i in arr])
+    buffer.append(arr)
+    #TODO scan buffer to header
+    #Remove data from buffer
+    #Parse data
+    
 @Gooey(program_name="Tecnadyne thruster control utility")
 def main():
     parser = GooeyParser()
-    parser.add_argument("--com", type=str, required=True, default="COM4", metavar="COM Port")
+    parser.add_argument("--com", type=str, required=True, default="COM5", metavar="COM Port")
     parser.add_argument("--loopint", type=float, required=True, default=0.05, metavar="Loop Interval (s)")
-    parser.add_argument("--rpm", type=int, required=True, metavar="RPM")
-    parser.add_argument("--runtime", type=int, required=True, default=5, metavar="Runtime (s)")
+    parser.add_argument("--rampstart", type=int, required=True, default=300, metavar="Ramp Start (RPM)")
+    parser.add_argument("--rampstop", type=int, required=True, default=500, metavar="Ramp Stop (RPM)")
+    parser.add_argument("--rampstep", type=int, required=True, default=20, metavar="Ramp Step (RPM)")
+    parser.add_argument("--ramptimestep", type=float, required=True, default=0.2, metavar="Ramp Time Step (s)")
+    parser.add_argument("--rampwaittime", type=float, required=True, default=3, metavar="Ramp Wait Time (s)")
     args = parser.parse_args()
-
-    ser = serial.Serial(str(args.com), 9600)
+    ser = SerialPort(args.com, 57600)
+    ser.register_receive_callback(datacb)
+    ser.open(args.com, 57600)
+    # ser = serial.Serial(str(args.com), 57600)
 
     loopint = float(args.loopint)
-    rpm = int(args.rpm)
-    rt = int(args.runtime)
-
-    sendMessageToThruster(ser, writeRPM(rpm, loopint))
-    sendMessageToThruster(ser, enableSpeedLoop())
-    time.sleep(rt)
-    sendMessageToThruster(ser, disableSpeedLoop())
+    rampstart = int(args.rampstart)
+    rampstop = int(args.rampstop)
+    rampstep = int(args.rampstep)
+    rt = float(args.ramptimestep)
+    wait = float(args.rampwaittime)
+    
+    rampThruster(ser, loopint, rampstart, rampstop, rampstep, rt, wait)
 
 
     
