@@ -2,6 +2,8 @@ import serial
 import time
 from gooey import Gooey, GooeyParser
 from utils.serial_port import SerialPort
+import struct
+
 
 # LOOP_INTERVAL = 0.05 # seconds
 MIN_TO_SEC = 60
@@ -12,7 +14,7 @@ SOH = b'\x01' # Start Of Header
 STN = b'\x6F' # Addressing all thrusters
 ETX = b'\x03' # End of Text
 
-buffer = []
+buffer = bytearray(b'')
 
 # to convert input RPM to tach value
 def tachFromRPM(rpm, loopint):
@@ -94,7 +96,7 @@ def keepAlive(ser, tim):
     while(time.time() - startTime < tim):
         sendMessageToThruster(ser, askStatus())
         # print("Received:", [hex(i) for i in received_message])
-        time.sleep(0.5)      
+        time.sleep(0.2) 
     print("done waiting")
 
 
@@ -106,12 +108,31 @@ def receive_data(ser):
     return received_data
 
 def datacb(arr):
-    print ("Data:", [hex(i) for i in arr])
-    buffer.append(arr)
-    #TODO scan buffer to header
-    #Remove data from buffer
-    #Parse data
+    global buffer
+    buffer += arr
+    startidx = -1
+    endidx = -1 
+    try:
+        startidx = buffer.index(b'\x10\x02')
+    except:
+        return
+    try:
+        endidx = buffer.index(b'\x10\x03')
+    except:
+        return
+
+    if (startidx == endidx):
+        return
+
+    result = buffer[startidx:endidx+3]
+    buffer = buffer[endidx+3:]
+
+    new_res = result[4:-3]
     
+    for i in range (14, 16):
+        print ("DB"+str(i+1), hex(new_res[i]))
+    
+
 @Gooey(program_name="Tecnadyne thruster control utility")
 def main():
     parser = GooeyParser()
@@ -120,7 +141,7 @@ def main():
     parser.add_argument("--rampstart", type=int, required=True, default=300, metavar="Ramp Start (RPM)")
     parser.add_argument("--rampstop", type=int, required=True, default=500, metavar="Ramp Stop (RPM)")
     parser.add_argument("--rampstep", type=int, required=True, default=20, metavar="Ramp Step (RPM)")
-    parser.add_argument("--ramptimestep", type=float, required=True, default=0.2, metavar="Ramp Time Step (s)")
+    parser.add_argument("--ramptimestep", type=float, required=True, default=0.1, metavar="Ramp Time Step (s)")
     parser.add_argument("--rampwaittime", type=float, required=True, default=3, metavar="Ramp Wait Time (s)")
     args = parser.parse_args()
     ser = SerialPort(args.com, 57600)
