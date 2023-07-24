@@ -91,21 +91,13 @@ def askStatus():
     return msg
 
 def keepAlive(ser, tim):
-    print("waiting")
+    # print("waiting")
     startTime = time.time()
     while(time.time() - startTime < tim):
         sendMessageToThruster(ser, askStatus())
         # print("Received:", [hex(i) for i in received_message])
         time.sleep(0.2) 
-    print("done waiting")
-
-
-# Function to receive data
-def receive_data(ser):
-    # received_data = ser.readline().decode().strip()
-    received_data = ser.read()
-    print ("rec", receive_data)
-    return received_data
+    # print("done waiting")
 
 def datacb(arr):
     global buffer
@@ -123,26 +115,27 @@ def datacb(arr):
 
     if (startidx == endidx):
         return
-
     result = buffer[startidx:endidx+3]
     buffer = buffer[endidx+3:]
-
     new_res = result[4:-3]
-    
-    for i in range (14, 16):
-        print ("DB"+str(i+1), hex(new_res[i]))
+    lng = len(new_res)
+    # print ("new_res_len:", lng)
+    if lng == 16:
+        for i in range (14, 16):
+            print ("DB"+str(i+1), hex(new_res[i]))
     
 
 @Gooey(program_name="Tecnadyne thruster control utility")
 def main():
     parser = GooeyParser()
     parser.add_argument("--com", type=str, required=True, default="COM5", metavar="COM Port")
+    parser.add_argument("--buadrate", type=int, required=True, default=57600, metavar="Buadrate (s)")
     parser.add_argument("--loopint", type=float, required=True, default=0.05, metavar="Loop Interval (s)")
-    parser.add_argument("--rampstart", type=int, required=True, default=300, metavar="Ramp Start (RPM)")
-    parser.add_argument("--rampstop", type=int, required=True, default=500, metavar="Ramp Stop (RPM)")
+    parser.add_argument("--rampstart", type=int, required=True, default=400, metavar="Ramp Start (RPM)")
+    parser.add_argument("--rampstop", type=int, required=True, default=600, metavar="Ramp Stop (RPM)")
     parser.add_argument("--rampstep", type=int, required=True, default=20, metavar="Ramp Step (RPM)")
     parser.add_argument("--ramptimestep", type=float, required=True, default=0.1, metavar="Ramp Time Step (s)")
-    parser.add_argument("--rampwaittime", type=float, required=True, default=3, metavar="Ramp Wait Time (s)")
+    parser.add_argument("--rampwaittime", type=int, required=True, default=3, metavar="Ramp Wait Time (s)")
     args = parser.parse_args()
     ser = SerialPort(args.com, 57600)
     ser.register_receive_callback(datacb)
