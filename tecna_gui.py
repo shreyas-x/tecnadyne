@@ -129,7 +129,7 @@ def datacb(arr):
 def main():
     parser = GooeyParser()
     parser.add_argument("--com", type=str, required=True, default="COM5", metavar="COM Port")
-    parser.add_argument("--buadrate", type=int, required=True, default=57600, metavar="Buadrate (s)")
+    parser.add_argument("--buadrate", type=int, required=True, default=57600, metavar="Buadrate")
     parser.add_argument("--loopint", type=float, required=True, default=0.05, metavar="Loop Interval (s)")
     parser.add_argument("--rampstart", type=int, required=True, default=400, metavar="Ramp Start (RPM)")
     parser.add_argument("--rampstop", type=int, required=True, default=600, metavar="Ramp Stop (RPM)")
@@ -137,9 +137,11 @@ def main():
     parser.add_argument("--ramptimestep", type=float, required=True, default=0.1, metavar="Ramp Time Step (s)")
     parser.add_argument("--rampwaittime", type=int, required=True, default=3, metavar="Ramp Wait Time (s)")
     args = parser.parse_args()
-    ser = SerialPort(args.com, 57600)
+
+    buadrate = int(args.buadrate)
+    ser = SerialPort(args.com, buadrate)
     ser.register_receive_callback(datacb)
-    ser.open(args.com, 57600)
+    ser.open(args.com, buadrate)
     # ser = serial.Serial(str(args.com), 57600)
 
     loopint = float(args.loopint)
