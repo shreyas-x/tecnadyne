@@ -8,6 +8,7 @@ import struct
 # LOOP_INTERVAL = 0.05 # seconds
 MIN_TO_SEC = 60
 TACH_CNT = 48
+cur_res = 0.02475
 
 DLE = b'\x10' # Data Link Escape
 SOH = b'\x01' # Start Of Header
@@ -20,7 +21,7 @@ buffer = bytearray(b'')
 def tachFromRPM(rpm, loopint):
     # from Tecnadyne Thrusters Communication Interface Protocol page 18
     tachInt = int(rpm*loopint*TACH_CNT/MIN_TO_SEC)
-    print(tachInt)
+    # print(tachInt)
     # return int value in bytes
     return tachInt.to_bytes(1, "big")
 
@@ -40,7 +41,7 @@ def writeRPM(rpm, loopint):
     msg = [DLE, SOH, STN, CMD, DB1, DB2, DB3, DB4, DLE, ETX]
     BCC = checksum(msg)
     msg = b''.join(msg) + BCC
-    print([hex(i) for i in msg])
+    # print([hex(i) for i in msg])
     return msg
 
 def enableSpeedLoop():
@@ -67,12 +68,14 @@ def sendMessageToThruster(ser, msg):
 def rampThruster(ser, loopint, start, stop, step, ts, wait):
     i = start
     while(i <= stop):
-        i += step
         sendMessageToThruster(ser, writeRPM(i, loopint))
         sendMessageToThruster(ser, enableSpeedLoop())
         time.sleep(ts)
+        i += step
     x = stop
-    
+    tach_end = int((i - step) * loopint * TACH_CNT / MIN_TO_SEC)
+    print ("Tach End: ", tach_end)
+    # print ("i: ", i)
     keepAlive(ser, wait)
 
     while(x >= start):
@@ -81,6 +84,9 @@ def rampThruster(ser, loopint, start, stop, step, ts, wait):
         sendMessageToThruster(ser, enableSpeedLoop())
         time.sleep(ts)
     sendMessageToThruster(ser, disableSpeedLoop())
+    tach_stop = int((x + step) * loopint * TACH_CNT / MIN_TO_SEC)
+    print ("Tach Stop: ", tach_stop)
+    # print ("x: ", x)
 
 def askStatus():
     CMD = b'\x37'
@@ -121,9 +127,15 @@ def datacb(arr):
     lng = len(new_res)
     # print ("new_res_len:", lng)
     if lng == 16:
-        for i in range (14, 16):
-            print ("DB"+str(i+1), hex(new_res[i]))
-    
+        # for i in range (14, 16):
+        #     print ("DB"+str(i+1), hex(new_res[i]))
+        curr = current(new_res[14:16])    
+        print("Current: ", curr)
+
+def current(raw):
+    cur_raw = int.from_bytes(raw, byteorder='big')
+    cur = cur_raw * cur_res
+    return cur
 
 @Gooey(program_name="Tecnadyne thruster control utility")
 def main():
@@ -131,11 +143,11 @@ def main():
     parser.add_argument("--com", type=str, required=True, default="COM5", metavar="COM Port")
     parser.add_argument("--buadrate", type=int, required=True, default=57600, metavar="Buadrate")
     parser.add_argument("--loopint", type=float, required=True, default=0.05, metavar="Loop Interval (s)")
+    parser.add_argument("--rampstep", type=int, required=True, default=20, metavar="Ramp Step (RPM)")
     parser.add_argument("--rampstart", type=int, required=True, default=400, metavar="Ramp Start (RPM)")
     parser.add_argument("--rampstop", type=int, required=True, default=600, metavar="Ramp Stop (RPM)")
-    parser.add_argument("--rampstep", type=int, required=True, default=20, metavar="Ramp Step (RPM)")
     parser.add_argument("--ramptimestep", type=float, required=True, default=0.1, metavar="Ramp Time Step (s)")
-    parser.add_argument("--rampwaittime", type=int, required=True, default=3, metavar="Ramp Wait Time (s)")
+    parser.add_argument("--rampwaittime", type=int, required=True, default=3, metavar="Steady State Run Time (s)")
     args = parser.parse_args()
 
     buadrate = int(args.buadrate)
