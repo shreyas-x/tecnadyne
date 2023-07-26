@@ -3,7 +3,7 @@ import time
 from gooey import Gooey, GooeyParser
 from utils.serial_port import SerialPort
 import struct
-
+import signal
 
 # LOOP_INTERVAL = 0.05 # seconds
 MIN_TO_SEC = 60
@@ -66,23 +66,47 @@ def sendMessageToThruster(ser, msg):
     ser.write(bytearray(msg))
 
 def rampThruster(ser, loopint, start, stop, step, ts, wait):
+    # Ramping up
     i = start
-    while(i <= stop):
-        sendMessageToThruster(ser, writeRPM(i, loopint))
-        sendMessageToThruster(ser, enableSpeedLoop())
-        time.sleep(ts)
-        i += step
+    try:
+        while(i <= stop):
+            sendMessageToThruster(ser, writeRPM(i, loopint))
+            sendMessageToThruster(ser, enableSpeedLoop())
+            time.sleep(ts)
+            i += step
+    except KeyboardInterrupt:
+        j = i
+        while(j >= start):
+            sendMessageToThruster(ser, writeRPM(j, loopint))
+            sendMessageToThruster(ser, enableSpeedLoop())
+            time.sleep(ts)
+            j -= step
+        sendMessageToThruster(ser, disableSpeedLoop())
+
     x = stop
     tach_end = int((i - step) * loopint * TACH_CNT / MIN_TO_SEC)
     print ("Tach End: ", tach_end)
     # print ("i: ", i)
-    keepAlive(ser, wait)
 
+    # Staying
+    try:
+        keepAlive(ser, wait)
+    except KeyboardInterrupt:
+        j = x
+        while(j >= start):
+            sendMessageToThruster(ser, writeRPM(j, loopint))
+            sendMessageToThruster(ser, enableSpeedLoop())
+            time.sleep(ts)
+            j -= step
+        sendMessageToThruster(ser, disableSpeedLoop())
+
+    # Ramping down
     while(x >= start):
         x -= step
         sendMessageToThruster(ser, writeRPM(x, loopint))
         sendMessageToThruster(ser, enableSpeedLoop())
         time.sleep(ts)
+
     sendMessageToThruster(ser, disableSpeedLoop())
     tach_stop = int((x + step) * loopint * TACH_CNT / MIN_TO_SEC)
     print ("Tach Stop: ", tach_stop)
@@ -137,7 +161,8 @@ def current(raw):
     cur = cur_raw * cur_res
     return cur
 
-@Gooey(program_name="Tecnadyne thruster control utility")
+@Gooey(program_name="Tecnadyne thruster control utility",
+       shutdown_signal = signal.CTRL_C_EVENT)
 def main():
     parser = GooeyParser()
     parser.add_argument("--com", type=str, required=True, default="COM5", metavar="COM Port")
