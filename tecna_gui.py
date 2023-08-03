@@ -5,6 +5,7 @@ from utils.serial_port import SerialPort
 import struct
 import signal
 import math
+import logging
 
 # LOOP_INTERVAL = 0.05 # seconds
 MIN_TO_SEC = 60
@@ -60,6 +61,7 @@ def disableSpeedLoop():
     BCC = checksum(msg)
     msg = b''.join(msg) + BCC 
     print("stopping")
+    logging.info("stopping")
     return msg
 
 def sendMessageToThruster(ser, msg):
@@ -76,6 +78,7 @@ def rampThruster(ser, loopint, start, stop, step, ts, wait, direct):
             i += step
     except KeyboardInterrupt:
         print ("KeyboardInterrupt")
+        logging.info("KeyboardInterrupt")
         j = i
         while(j >= start):
             sendMessageToThruster(ser, writeRPM(j, loopint, direct))
@@ -85,6 +88,7 @@ def rampThruster(ser, loopint, start, stop, step, ts, wait, direct):
         sendMessageToThruster(ser, disableSpeedLoop())
     except ValueError:
         print ("ValueError")
+        logging.info("ValueError")
         j = i
         while(j >= start):
             sendMessageToThruster(ser, writeRPM(j, loopint, direct))
@@ -96,12 +100,14 @@ def rampThruster(ser, loopint, start, stop, step, ts, wait, direct):
     x = stop
     tach_end = int((i - step) * loopint * TACH_CNT / MIN_TO_SEC)
     print ("Tach End: ", tach_end)
+    logging.info("Tach End: ", tach_end)
 
     # Staying
     try:
         keepAlive(ser, wait)
     except KeyboardInterrupt:
-        print ("KeyboardInterrupt")
+        print("KeyboardInterrupt")
+        logging.info("KeyboardInterrupt")
         j = x
         while(j >= start):
             sendMessageToThruster(ser, writeRPM(j, loopint, direct))
@@ -126,7 +132,8 @@ def rampThruster(ser, loopint, start, stop, step, ts, wait, direct):
         time.sleep(ts)
     sendMessageToThruster(ser, disableSpeedLoop())
     tach_stop = int((x + step) * loopint * TACH_CNT / MIN_TO_SEC)
-    print ("Tach Stop: ", tach_stop)
+    print("Tach Stop: ", tach_stop)
+    logging.info("Tach Stop: ", tach_stop)
 
 def askStatus():
     CMD = b'\x32'
@@ -146,7 +153,8 @@ def keepAlive(ser, tim):
         time.sleep(0.2)
         t = int(time.time() - startTime)
         if t > t2:
-            print ("Run Time(s): ", t)
+            print("Run Time(s): ", t)
+            logging.info("Run Time(s): ", t)
             t2 = t
     # print("done waiting")
 
@@ -176,12 +184,16 @@ def datacb(arr):
         #     print ("DB"+str(i+1), hex(new_res[i]))
         curr = current(new_res[2:4])    
         print("Current: ", curr)
+        logging.info("Current: ", curr)
         volt = voltage(new_res[0:2])    
         print("Voltage: ", volt)
+        logging.info("Voltage: ", volt)
         e_temp = e_temperature(new_res[6:8])    
         print("Electronics Temperature: ", e_temp)
+        logging.info("Electronics Temperature: ", e_temp)
         m_temp = m_temperature(new_res[10:12])
         print("Motor Temperature: ", m_temp)
+        logging.info("Motor Temperature: ", m_temp)
 
 def current(raw):
     cur_raw = int.from_bytes(raw, byteorder='big')
@@ -241,6 +253,7 @@ def main():
     parser.add_argument("--rampstop", type=int, required=True, default=900, metavar="Ramp Stop (RPM)")
     parser.add_argument("--ramptimestep", type=float, required=True, default=0.03, metavar="Ramp Time Step (default) (s)")
     parser.add_argument("--rampwaittime", type=int, required=True, default=3, metavar="Steady State Run Time (s)")
+    parser.add_argument("--log", action='store_true', widget='CheckBox', default=False, metavar="Save Logs?")
     args = parser.parse_args()
 
     buadrate = int(args.buadrate)
@@ -256,6 +269,11 @@ def main():
     rt = float(args.ramptimestep)
     wait = float(args.rampwaittime)
     direct = int(args.dir)
+
+    saveLogs = args.log
+    if(saveLogs):
+        logging.basicConfig(filename="tecnalog_"+str(math.floor(time.time()))+".log", encoding='utf-8', level=logging.INFO)
+
 
     loopint = constraint(loopint, 0.05, 0.1)
     rampstart = constraint(rampstart, 300, 400)
